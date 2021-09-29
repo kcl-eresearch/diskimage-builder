@@ -58,6 +58,12 @@ class PartitionNode(NodeBase):
         elif self.partitioning.label == 'mbr':
             self.ptype = int(config['type'], 16) if 'type' in config else 0x83
 
+        self.encrypted = bool(config['encrypted']) if 'encrypted' in config else False
+        if self.encrypted:
+            if 'luks_keyfile' not in config:
+                raise BlockDeviceSetupException("You must provide a LUKS keyfile for encrypted partitions")
+            self.luks_keyfile = str(config['luks_keyfile'])
+
     def get_flags(self):
         return self.flags
 
@@ -66,6 +72,12 @@ class PartitionNode(NodeBase):
 
     def get_type(self):
         return self.ptype
+
+    def get_encrypted(self):
+        return self.encrypted
+
+    def get_luks_keyfile(self):
+        return self.luks_keyfile
 
     def get_edges(self):
         edge_from = [self.base]

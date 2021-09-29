@@ -170,6 +170,19 @@ class Partitioning(PluginBase):
         logger.debug("cmd: %s", ' '.join(cmd))
         exec_sudo(cmd)
 
+    def _handle_encryptions(self):
+        for p in self.partitions:
+            if p.get_encrypted():
+                pname = p.get_name()
+                devname = self.state['blockdev'][pname]['device']
+                newdevname = "%s_crypt" % devname
+                luksfile = p.get_luks_keyfile()
+                exec_sudo(["cryptsetup", "luksFormat", devname, luksfile])
+                exec_sudo(["cryptsetup", "--key-file", luksfile, "open", devname, newdevname])
+                self.state['blockdev'][pname]['device'] = newdevname
+                self.state['blockdev'][pname]['raw_device'] = devname
+
+
     # not this is NOT a node and this is not called directly!  The
     # create() calls in the partition nodes this plugin has
     # created are calling back into this.
@@ -214,6 +227,9 @@ class Partitioning(PluginBase):
             exec_sudo(["kpartx", "-av", self.device_path])
             exec_sudo(["dmsetup", "--noudevsync", "mknodes"])
 
+        # Handle encryption.
+        self._handle_encryptions()
+
         return
 
     def umount(self):
@@ -224,6 +240,14 @@ class Partitioning(PluginBase):
         # we know this is the very last partition
         self.number_of_partitions -= 1
         if self.number_of_partitions == 0:
+            # First, close any encrypted partitions.
+            for p in self.partitions:
+                if p.get_encrypted():
+                    exec_sudo(["cryptsetup", "close",
+                        self.state['blockdev'][p.get_name()]['device']])
+                    self.state['blockdev'][p.get_name()]['device'] =
+                        self.state['blockdev'][p.get_name()]['raw_device']
+            # Now signal kpartx.
             exec_sudo(["kpartx", "-d",
                        self.state['blockdev'][self.base]['device']])
 
